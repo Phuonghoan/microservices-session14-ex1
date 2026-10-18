@@ -2,9 +2,9 @@ package org.example.identityservice.service;
 
 import org.example.identityservice.entity.User;
 import org.example.identityservice.repository.UserRepository;
-import org.example.identityservice.util.JwtUtil;
 
 import org.springframework.http.HttpStatus;
+
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -18,21 +18,18 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtUtil jwtUtil;
 
     public AuthService(
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder,
-            JwtUtil jwtUtil
+            PasswordEncoder passwordEncoder
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.jwtUtil = jwtUtil;
     }
 
-    // ==================================
+    // =====================================
     // BÀI 1: ĐĂNG KÝ
-    // ==================================
+    // =====================================
 
     public User register(String username, String password) {
 
@@ -57,35 +54,30 @@ public class AuthService {
 
         user.setId(UUID.randomUUID().toString());
         user.setUsername(username);
-
-        // Mã hóa BCrypt
         user.setPassword(passwordEncoder.encode(password));
-
         user.setRole("USER");
 
         return userRepository.save(user);
     }
 
-    // ==================================
-    // BÀI 3: ĐĂNG NHẬP
-    // ==================================
+    // =====================================
+    // BÀI 3: XÁC THỰC ĐĂNG NHẬP
+    // =====================================
 
-    public String login(String username, String password) {
+    public User authenticate(String username, String password) {
 
-        // Kiểm tra thông tin đầu vào
         if (username == null || username.isBlank()
                 || password == null || password.isBlank()) {
 
             throw new BadCredentialsException("Bad credentials");
         }
 
-        // Tìm User từ PostgreSQL
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() ->
                         new BadCredentialsException("Bad credentials")
                 );
 
-        // So sánh mật khẩu bằng BCrypt
+        // So sánh password bằng BCrypt
         if (!passwordEncoder.matches(
                 password,
                 user.getPassword()
@@ -94,7 +86,7 @@ public class AuthService {
             throw new BadCredentialsException("Bad credentials");
         }
 
-        // Đúng thông tin -> tạo JWT
-        return jwtUtil.generateToken(user);
+        // Trả User đã xác thực thành công
+        return user;
     }
 }

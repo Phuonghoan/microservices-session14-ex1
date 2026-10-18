@@ -1,8 +1,13 @@
 package org.example.identityservice.controller;
 
 import org.example.identityservice.entity.User;
+import org.example.identityservice.entity.RefreshToken;
+
 import org.example.identityservice.repository.UserRepository;
+
 import org.example.identityservice.service.AuthService;
+import org.example.identityservice.service.RefreshTokenService;
+
 import org.example.identityservice.util.JwtUtil;
 
 import org.springframework.http.HttpStatus;
@@ -21,20 +26,23 @@ public class AuthController {
     private final AuthService authService;
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
+    private final RefreshTokenService refreshTokenService;
 
     public AuthController(
             AuthService authService,
             UserRepository userRepository,
-            JwtUtil jwtUtil
+            JwtUtil jwtUtil,
+            RefreshTokenService refreshTokenService
     ) {
         this.authService = authService;
         this.userRepository = userRepository;
         this.jwtUtil = jwtUtil;
+        this.refreshTokenService = refreshTokenService;
     }
 
-    // ==================================
-    // BÀI 1: ĐĂNG KÝ
-    // ==================================
+    // =====================================
+    // BÀI 1: REGISTER
+    // =====================================
 
     @PostMapping("/register")
     public ResponseEntity<RegisterResponse> register(
@@ -46,20 +54,20 @@ public class AuthController {
                 request.password()
         );
 
-        RegisterResponse response = new RegisterResponse(
-                user.getId(),
-                user.getUsername(),
-                user.getRole()
-        );
-
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(response);
+                .body(
+                        new RegisterResponse(
+                                user.getId(),
+                                user.getUsername(),
+                                user.getRole()
+                        )
+                );
     }
 
-    // ==================================
-    // BÀI 2: TEST JWT
-    // ==================================
+    // =====================================
+    // BÀI 2: TEST ACCESS TOKEN
+    // =====================================
 
     @GetMapping(
             value = "/test-token",
@@ -77,29 +85,47 @@ public class AuthController {
                         )
                 );
 
-        return jwtUtil.generateToken(user);
+        return jwtUtil.generateAccessToken(user);
     }
 
-    // ==================================
-    // BÀI 3: LOGIN
-    // ==================================
+    // =====================================
+    // BÀI MỚI: LOGIN TRẢ 2 TOKEN
+    // =====================================
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
             @RequestBody LoginRequest request
     ) {
 
-        String token = authService.login(
+        // 1. Xác thực username/password
+        User user = authService.authenticate(
                 request.username(),
                 request.password()
         );
 
+        // 2. Tạo Access Token
+        String accessToken =
+                jwtUtil.generateAccessToken(user);
+
+        // 3. Tạo Refresh Token và lưu PostgreSQL
+        RefreshToken refreshToken =
+                refreshTokenService.createRefreshToken(
+                        user.getId()
+                );
+
+        // 4. Trả về cả hai token
         return ResponseEntity.ok(
-                new LoginResponse(token)
+                new LoginResponse(
+                        accessToken,
+                        refreshToken.getToken()
+                )
         );
     }
 
-    // Xử lý lỗi đăng nhập
+    // =====================================
+    // XỬ LÝ LỖI ĐĂNG NHẬP
+    // =====================================
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleBadCredentials(
             BadCredentialsException exception
@@ -107,12 +133,14 @@ public class AuthController {
 
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(new ErrorResponse("Bad credentials"));
+                .body(
+                        new ErrorResponse("Bad credentials")
+                );
     }
 
-    // ==================================
+    // =====================================
     // DTO
-    // ==================================
+    // =====================================
 
     public record RegisterRequest(
             String username,
@@ -134,7 +162,8 @@ public class AuthController {
     }
 
     public record LoginResponse(
-            String token
+            String accessToken,
+            String refreshToken
     ) {
     }
 
